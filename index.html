@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DPMods Admin - Final Fix</title>
+    <title>DPMods Admin - Firebase Edition</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=JetBrains+Mono:wght[400]&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -142,7 +142,6 @@
 
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); display: none; justify-content: center; align-items: center; z-index: 10000; }
         
-        /* Animation for modal visibility */
         @keyframes modalPop { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
         
         .modal-box { 
@@ -162,10 +161,10 @@
         #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: var(--primary); color: white; padding: 12px 24px; border-radius: 50px; font-size: 0.9rem; font-weight: 500; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 11000; opacity: 0; transition: 0.3s; pointer-events: none; white-space: nowrap; }
     </style>
 </head>
-<body onload="initApp()">
+<body>
 
     <div id="toast">Notification</div>
-    <div id="loader"><i class="fas fa-circle-notch fa-spin fa-2x"></i><span>Syncing Data...</span></div>
+    <div id="loader"><i class="fas fa-circle-notch fa-spin fa-2x"></i><span>Connecting Firebase...</span></div>
 
     <datalist id="time-presets"><option value="1h"><option value="12h"><option value="1d"><option value="3d"><option value="1w"><option value="30d"><option value="lifetime"></datalist>
 
@@ -368,18 +367,26 @@
         </div>
     </div>
 
-    <script>
-        // === CONFIGURATION (UPDATED) ===
-        const REPO = "DPModsYT/animkeylogspanel";
-        const TOKEN = "glpat-fusK_SUBSCRIBE_DPMods.01.1212qmsvp"; 
-        const FILE = "Key.json";
-        const BRANCH = "main";
-        const API = `https://gitlab.com/api/v4/projects/${encodeURIComponent(REPO)}/repository/files/${encodeURIComponent(FILE)}`;
-        
-        // A very distant future timestamp (used to push Lifetime/Duration keys to the bottom of the expiry sort)
-        const LIFETIME_TS = 99999999999999; 
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+        import { getDatabase, ref, set, get, child } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
-        let DATA = { config:{}, security:{}, ui:{}, theme:{}, social_links:{}, promo:{}, update:{}, blacklist:[], keys:{} };
+        const firebaseConfig = {
+            apiKey: "AIzaSyDhzujkRLP-zFFNkJ2i9QGS061dK7OigyE",
+            authDomain: "dflixmovie-6d365.firebaseapp.com",
+            databaseURL: "https://dflixmovie-6d365-default-rtdb.firebaseio.com",
+            projectId: "dflixmovie-6d365",
+            storageBucket: "dflixmovie-6d365.firebasestorage.app",
+            messagingSenderId: "528943038278",
+            appId: "1:528943038278:web:af3daa46aeeec7828aaf47",
+            measurementId: "G-V0FWDRSNTP"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const LIFETIME_TS = 99999999999999; 
+        window.DATA = { config:{}, security:{}, ui:{}, theme:{}, social_links:{}, promo:{}, update:{}, blacklist:[], keys:{} };
         let EDIT_ID = null;
         let SORT = 'default';
 
@@ -391,161 +398,123 @@
             setTimeout(()=> { t.style.opacity = 0; t.style.transform = 'translate(-50%, 0)'; }, 3000);
         }
 
-        // === API LOGIC ===
         async function loadData() {
             document.getElementById('loader').style.display = 'flex';
             try {
-                const r = await fetch(`${API}?ref=${BRANCH}`, { headers: { 'Private-Token': TOKEN } });
-                if(r.status === 404) {
-                    toast("Key.json not found. Starting fresh.", true);
-                    document.getElementById('loader').style.display = 'none';
-                    return;
+                const dbRef = ref(db);
+                const snapshot = await get(child(dbRef, `/`));
+                if (snapshot.exists()) {
+                    window.DATA = snapshot.val();
+                    if(!window.DATA.keys) window.DATA.keys = {};
+                    if(!window.DATA.blacklist) window.DATA.blacklist = [];
+                    renderAll();
+                    toast("Firebase Data Synced");
+                } else {
+                    toast("No data found in Firebase", true);
                 }
-                if(!r.ok) throw new Error(r.statusText || "Failed to connect to GitLab (Check Token)");
-                
-                const j = await r.json();
-                const content = JSON.parse(atob(j.content));
-                
-                DATA = content;
-                if(!DATA.keys) DATA.keys = {};
-                if(!DATA.blacklist) DATA.blacklist = [];
-                
-                renderAll();
-                toast("Data Synced Successfully");
-            } catch(e) {
+            } catch (e) {
+                toast("Firebase Load Error", true);
                 console.error(e);
-                toast("Load Error: " + e.message, true);
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
         }
 
         async function saveAllData() {
-            // CONFIG
-            if(!DATA.config) DATA.config = {};
-            DATA.config.maintenance = document.getElementById('c_maint').value === 'true';
-            DATA.config.silentCheck = document.getElementById('c_silent').value === 'true';
-            DATA.config.timezone = document.getElementById('c_tz').value;
-            DATA.config.adminUrl = document.getElementById('c_admin').value;
-            DATA.config.tgBotToken = document.getElementById('c_bot').value;
-            DATA.config.tgChatId = document.getElementById('c_chat').value;
-            DATA.config.broadcastEnabled = document.getElementById('c_bc_active').value === 'true';
-            DATA.config.broadcastMessage = document.getElementById('c_bc_msg').value;
+            // Collecting Form Data
+            if(!window.DATA.config) window.DATA.config = {};
+            window.DATA.config.maintenance = document.getElementById('c_maint').value === 'true';
+            window.DATA.config.silentCheck = document.getElementById('c_silent').value === 'true';
+            window.DATA.config.timezone = document.getElementById('c_tz').value;
+            window.DATA.config.adminUrl = document.getElementById('c_admin').value;
+            window.DATA.config.tgBotToken = document.getElementById('c_bot').value;
+            window.DATA.config.tgChatId = document.getElementById('c_chat').value;
+            window.DATA.config.broadcastEnabled = document.getElementById('c_bc_active').value === 'true';
+            window.DATA.config.broadcastMessage = document.getElementById('c_bc_msg').value;
 
-            // SECURITY
-            if(!DATA.security) DATA.security = {};
-            DATA.security.packageName = document.getElementById('s_pkg').value;
-            DATA.security.killOnMismatch = document.getElementById('s_kill').value === 'true';
+            if(!window.DATA.security) window.DATA.security = {};
+            window.DATA.security.packageName = document.getElementById('s_pkg').value;
+            window.DATA.security.killOnMismatch = document.getElementById('s_kill').value === 'true';
             const bl = document.getElementById('s_bl').value.trim();
-            DATA.blacklist = bl ? bl.split('\n').map(x=>x.trim()).filter(x=>x) : [];
+            window.DATA.blacklist = bl ? bl.split('\n').map(x=>x.trim()).filter(x=>x) : [];
 
-            // UI
-            if(!DATA.ui) DATA.ui = {};
-            DATA.ui.title = document.getElementById('u_title').value;
-            DATA.ui.subtitle = document.getElementById('u_sub').value;
-            DATA.ui.loginBtn = document.getElementById('u_lbtn').value;
-            DATA.ui.adminBtn = document.getElementById('u_abtn').value;
-            DATA.ui.errorTitle = document.getElementById('ui_errorTitle').value;
-            DATA.ui.errorSub = document.getElementById('ui_errorSub').value;
-            DATA.ui.enableParticles = document.getElementById('ui_enableParticles').value === 'true';
-            DATA.ui.particleColor1 = document.getElementById('ui_particleColor1').value;
-            DATA.ui.particleColor2 = document.getElementById('ui_particleColor2').value;
+            if(!window.DATA.ui) window.DATA.ui = {};
+            window.DATA.ui.title = document.getElementById('u_title').value;
+            window.DATA.ui.subtitle = document.getElementById('u_sub').value;
+            window.DATA.ui.loginBtn = document.getElementById('u_lbtn').value;
+            window.DATA.ui.adminBtn = document.getElementById('u_abtn').value;
+            window.DATA.ui.errorTitle = document.getElementById('ui_errorTitle').value;
+            window.DATA.ui.errorSub = document.getElementById('ui_errorSub').value;
+            window.DATA.ui.enableParticles = document.getElementById('ui_enableParticles').value === 'true';
+            window.DATA.ui.particleColor1 = document.getElementById('ui_particleColor1').value;
+            window.DATA.ui.particleColor2 = document.getElementById('ui_particleColor2').value;
             
-            if(!DATA.ui.socials) DATA.ui.socials = {};
-            DATA.ui.socials.telegram = document.getElementById('soc_telegram').value === 'true';
-            DATA.ui.socials.youtube = document.getElementById('soc_youtube').value === 'true';
-            DATA.ui.socials.instagram = document.getElementById('soc_instagram').value === 'true';
+            if(!window.DATA.ui.socials) window.DATA.ui.socials = {};
+            window.DATA.ui.socials.telegram = document.getElementById('soc_telegram').value === 'true';
+            window.DATA.ui.socials.youtube = document.getElementById('soc_youtube').value === 'true';
+            window.DATA.ui.socials.instagram = document.getElementById('soc_instagram').value === 'true';
 
-            // THEME
-            if(!DATA.theme) DATA.theme = {};
-            DATA.theme.useCustom = document.getElementById('theme_useCustom').value === 'true';
-            DATA.theme.background = document.getElementById('theme_background').value;
-            DATA.theme.accent = document.getElementById('theme_accent').value;
-            DATA.theme.text = document.getElementById('theme_text').value;
-            DATA.theme.subText = document.getElementById('theme_subText').value;
+            if(!window.DATA.theme) window.DATA.theme = {};
+            window.DATA.theme.useCustom = document.getElementById('theme_useCustom').value === 'true';
+            window.DATA.theme.background = document.getElementById('theme_background').value;
+            window.DATA.theme.accent = document.getElementById('theme_accent').value;
+            window.DATA.theme.text = document.getElementById('theme_text').value;
+            window.DATA.theme.subText = document.getElementById('theme_subText').value;
 
-            // LINKS
-            if(!DATA.social_links) DATA.social_links = {};
-            DATA.social_links.telegram = document.getElementById('l_tg').value;
-            DATA.social_links.youtube = document.getElementById('l_yt').value;
-            DATA.social_links.instagram = document.getElementById('l_ig').value;
+            if(!window.DATA.social_links) window.DATA.social_links = {};
+            window.DATA.social_links.telegram = document.getElementById('l_tg').value;
+            window.DATA.social_links.youtube = document.getElementById('l_yt').value;
+            window.DATA.social_links.instagram = document.getElementById('l_ig').value;
 
-            // PROMO
-            if(!DATA.promo) DATA.promo = {};
-            DATA.promo.enabled = document.getElementById('p_en').value === 'true';
-            DATA.promo.text = document.getElementById('p_txt').value;
-            DATA.promo.url = document.getElementById('p_url').value;
+            if(!window.DATA.promo) window.DATA.promo = {};
+            window.DATA.promo.enabled = document.getElementById('p_en').value === 'true';
+            window.DATA.promo.text = document.getElementById('p_txt').value;
+            window.DATA.promo.url = document.getElementById('p_url').value;
 
-            // UPDATE
-            if(!DATA.update) DATA.update = {};
-            DATA.update.available = document.getElementById('up_avail').value === 'true';
-            DATA.update.force = document.getElementById('up_force').value === 'true';
-            DATA.update.version = document.getElementById('up_ver').value;
-            DATA.update.url = document.getElementById('up_url').value;
+            if(!window.DATA.update) window.DATA.update = {};
+            window.DATA.update.available = document.getElementById('up_avail').value === 'true';
+            window.DATA.update.force = document.getElementById('up_force').value === 'true';
+            window.DATA.update.version = document.getElementById('up_ver').value;
+            window.DATA.update.url = document.getElementById('up_url').value;
 
-
-            // Push to GitLab
             document.getElementById('loader').style.display = 'flex';
             try {
-                const payload = {
-                    branch: BRANCH,
-                    commit_message: "Update from Admin Panel",
-                    encoding: "base64",
-                    content: btoa(JSON.stringify(DATA, null, 2))
-                };
-                
-                const r = await fetch(API, {
-                    method: 'PUT',
-                    headers: { 'Private-Token': TOKEN, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                
-                if(!r.ok) throw new Error(r.statusText || "GitLab API Error");
-                toast("Changes Saved to GitLab!");
-            } catch(e) {
-                console.error(e);
-                toast("Save Failed: " + e.message, true);
+                await set(ref(db, '/'), window.DATA);
+                toast("Data Saved to Firebase!");
+            } catch (e) {
+                toast("Firebase Save Error", true);
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
         }
 
-        // === KEY HELPERS ===
+        // Global functions exposed to onclick
+        window.saveAllData = saveAllData;
+        window.loadData = loadData;
 
-        function getExpiryTimestamp(d) {
-            // Only 'date' type keys have a definite expiry date for sorting purposes
+        window.getExpiryTimestamp = (d) => {
             if (d.type !== 'date' || !d.value) return LIFETIME_TS;
-
-            // Date keys return their timestamp (earlier date = lower timestamp)
             const expiry = new Date(d.value).getTime();
-            
-            // If the date is invalid, treat as lifetime for safety
             return isNaN(expiry) ? LIFETIME_TS : expiry;
         }
 
-        function getStatusDot(d) {
+        window.getStatusDot = (d) => {
             if(d.type === 'lifetime') return 'dot-lifetime';
             if(d.type === 'duration') return 'dot-duration';
-            
-            // Date Check
             if(d.type === 'date' && d.value) {
                 const exp = new Date(d.value).getTime();
                 const now = Date.now();
-                if(isNaN(exp)) return 'dot-valid'; // Treat invalid dates as valid by default
-                if(exp < now) return 'dot-expired'; // Expired
-                if(exp - now < 86400000 * 7) return 'dot-warning'; // Warning (less than 7 days)
-                return 'dot-valid'; // Valid
+                if(isNaN(exp)) return 'dot-valid';
+                if(exp < now) return 'dot-expired';
+                if(exp - now < 86400000 * 7) return 'dot-warning';
+                return 'dot-valid';
             }
             return 'dot-valid';
         }
 
-        // === KEY CRUD & RENDERERS ===
-
-        function renderAll() {
+        window.renderAll = () => {
             renderKeys();
-            
-            // CONFIG
-            const c = DATA.config || {};
+            const c = window.DATA.config || {};
             document.getElementById('c_maint').value = (c.maintenance===true).toString();
             document.getElementById('c_silent').value = (c.silentCheck!==false).toString();
             document.getElementById('c_tz').value = c.timezone || '';
@@ -555,14 +524,12 @@
             document.getElementById('c_bc_active').value = (c.broadcastEnabled===true).toString();
             document.getElementById('c_bc_msg').value = c.broadcastMessage || '';
 
-            // SECURITY
-            const s = DATA.security || {};
+            const s = window.DATA.security || {};
             document.getElementById('s_pkg').value = s.packageName || '';
             document.getElementById('s_kill').value = (s.killOnMismatch===true).toString();
-            document.getElementById('s_bl').value = (DATA.blacklist || []).join('\n');
+            document.getElementById('s_bl').value = (window.DATA.blacklist || []).join('\n');
 
-            // UI
-            const u = DATA.ui || {};
+            const u = window.DATA.ui || {};
             document.getElementById('u_title').value = u.title || '';
             document.getElementById('u_sub').value = u.subtitle || '';
             document.getElementById('u_lbtn').value = u.loginBtn || '';
@@ -570,69 +537,51 @@
             document.getElementById('ui_errorTitle').value = u.errorTitle || '';
             document.getElementById('ui_errorSub').value = u.errorSub || '';
             document.getElementById('ui_enableParticles').value = (u.enableParticles===true).toString();
-            document.getElementById('ui_particleColor1').value = u.particleColor1 || '#ff00ea'; // Defaulted to common value
-            document.getElementById('ui_particleColor2').value = u.particleColor2 || '#0000ff'; // Defaulted to common value
+            document.getElementById('ui_particleColor1').value = u.particleColor1 || '#ff00ea';
+            document.getElementById('ui_particleColor2').value = u.particleColor2 || '#0000ff';
             
             const soc = u.socials || {};
             document.getElementById('soc_telegram').value = (soc.telegram!==false).toString();
             document.getElementById('soc_youtube').value = (soc.youtube!==false).toString();
             document.getElementById('soc_instagram').value = (soc.instagram!==false).toString();
 
-            // THEME
-            const t = DATA.theme || {};
+            const t = window.DATA.theme || {};
             document.getElementById('theme_useCustom').value = (t.useCustom===true).toString();
             document.getElementById('theme_background').value = t.background || '#000000';
             document.getElementById('theme_accent').value = t.accent || '#bb66ff';
             document.getElementById('theme_text').value = t.text || '#ffffff';
             document.getElementById('theme_subText').value = t.subText || '#d1d1d1';
 
-            // LINKS
-            const l = DATA.social_links || {};
+            const l = window.DATA.social_links || {};
             document.getElementById('l_tg').value = l.telegram || '';
             document.getElementById('l_yt').value = l.youtube || '';
             document.getElementById('l_ig').value = l.instagram || '';
 
-            // PROMO
-            const p = DATA.promo || {};
+            const p = window.DATA.promo || {};
             document.getElementById('p_en').value = (p.enabled===true).toString();
             document.getElementById('p_txt').value = p.text || '';
             document.getElementById('p_url').value = p.url || '';
 
-            // UPDATE
-            const up = DATA.update || {};
+            const up = window.DATA.update || {};
             document.getElementById('up_avail').value = (up.available===true).toString();
             document.getElementById('up_force').value = (up.force===true).toString();
             document.getElementById('up_ver').value = up.version || '';
             document.getElementById('up_url').value = up.url || '';
         }
-        
-        function renderKeys() {
+
+        window.renderKeys = () => {
             const list = document.getElementById('keysList');
             list.innerHTML = '';
             const query = document.getElementById('search').value.toLowerCase();
+            let keys = Object.keys(window.DATA.keys || {}).filter(k => k.toLowerCase().includes(query));
             
-            let keys = Object.keys(DATA.keys).filter(k => k.toLowerCase().includes(query));
-            
-            // --- Advanced Sorting Logic ---
             keys.sort((a, b) => {
-                const keyA = DATA.keys[a];
-                const keyB = DATA.keys[b];
-
-                if (SORT === 'az') {
-                    return a.localeCompare(b); // Alphabetical A-Z
-                }
-
-                // For 'default' and 'exp' sort, prioritize expiry time
-                const expiryA = getExpiryTimestamp(keyA);
-                const expiryB = getExpiryTimestamp(keyB);
-
-                // Lower timestamp means sooner expiry (Expired=lowest, Warning=next, Valid=higher, Lifetime=Highest/LIFETIME_TS)
-                if (expiryA !== expiryB) {
-                    return expiryA - expiryB;
-                }
-
-                // Secondary sort: Alphabetical for keys with the same expiry (e.g., all lifetime keys)
-                return a.localeCompare(b);
+                const keyA = window.DATA.keys[a];
+                const keyB = window.DATA.keys[b];
+                if (SORT === 'az') return a.localeCompare(b);
+                const expA = window.getExpiryTimestamp(keyA);
+                const expB = window.getExpiryTimestamp(keyB);
+                return expA !== expB ? expA - expB : a.localeCompare(b);
             });
 
             if(keys.length === 0) {
@@ -641,12 +590,11 @@
             }
 
             keys.forEach(k => {
-                const d = DATA.keys[k];
-                const dot = getStatusDot(d);
+                const d = window.DATA.keys[k];
+                const dot = window.getStatusDot(d);
                 const devices = d.devices ? `<span class="tag"><i class="fas fa-mobile"></i> ${d.devices.length}</span>` : '';
-                
                 list.innerHTML += `
-                <div class="key-item" onclick="copy('${k}')">
+                <div class="key-item" onclick="window.copy('${k}')">
                     <div class="k-info">
                         <h4><span class="dot ${dot}"></span> ${k}</h4>
                         <div class="k-tags">
@@ -656,19 +604,16 @@
                         </div>
                     </div>
                     <div class="k-actions">
-                        <i class="fas fa-pen" onclick="event.stopPropagation(); edit('${k}')"></i>
-                        <i class="fas fa-trash" onclick="event.stopPropagation(); delKey('${k}')"></i>
+                        <i class="fas fa-pen" onclick="event.stopPropagation(); window.edit('${k}')"></i>
+                        <i class="fas fa-trash" onclick="event.stopPropagation(); window.delKey('${k}')"></i>
                     </div>
                 </div>`;
             });
         }
 
-        // --- UTILITY FUNCTIONS ---
-
-        function saveKey() {
+        window.saveKey = () => {
             const name = document.getElementById('mk_name').value.trim();
             if(!name) return toast("Key Name Required", true);
-
             const type = document.getElementById('mk_type').value;
             const val = document.getElementById('mk_val').value.trim();
             const int = document.getElementById('mk_int').value.trim() || '1d';
@@ -681,15 +626,14 @@
             if(tst) keyObj.toast = tst;
             if(devRaw) keyObj.devices = devRaw.split(/[\n,]+/).map(x=>x.trim()).filter(x=>x);
 
-            if(EDIT_ID && EDIT_ID !== name) delete DATA.keys[EDIT_ID];
-            
-            DATA.keys[name] = keyObj;
+            if(EDIT_ID && EDIT_ID !== name) delete window.DATA.keys[EDIT_ID];
+            window.DATA.keys[name] = keyObj;
             closeM('keyModal');
             renderKeys();
             saveAllData();
         }
 
-        function generate() {
+        window.generate = () => {
             const prefix = document.getElementById('gk_pre').value.trim().toUpperCase();
             const amount = parseInt(document.getElementById('gk_amt').value) || 1;
             const type = document.getElementById('gk_type').value;
@@ -707,27 +651,25 @@
             for(let i=0; i<amount; i++) {
                 const rand = Math.random().toString(36).substring(2,6).toUpperCase();
                 const name = prefix ? `${prefix}_${rand}` : `KEY_${rand}`;
-                DATA.keys[name] = JSON.parse(JSON.stringify(base));
+                window.DATA.keys[name] = JSON.parse(JSON.stringify(base));
             }
-            
             closeM('genModal');
             renderKeys();
             saveAllData();
         }
 
-        function delKey(k) {
+        window.delKey = (k) => {
             if(confirm('Delete ' + k + '?')) {
-                delete DATA.keys[k];
+                delete window.DATA.keys[k];
                 renderKeys();
                 saveAllData();
             }
         }
 
-        function copy(txt) { navigator.clipboard.writeText(txt); toast('Copied!'); }
-        
-        function edit(k) {
+        window.copy = (txt) => { navigator.clipboard.writeText(txt); toast('Copied!'); }
+        window.edit = (k) => {
             EDIT_ID = k;
-            const d = DATA.keys[k];
+            const d = window.DATA.keys[k];
             document.getElementById('mk_name').value = k;
             document.getElementById('mk_name').disabled = true; 
             document.getElementById('mk_type').value = d.type;
@@ -740,7 +682,7 @@
             document.getElementById('keyModal').style.display = 'flex';
         }
 
-        function openKeyModal() {
+        window.openKeyModal = () => {
             EDIT_ID = null;
             document.getElementById('mk_name').value = '';
             document.getElementById('mk_name').disabled = false;
@@ -754,43 +696,38 @@
             document.getElementById('keyModal').style.display = 'flex';
         }
 
-        function openGenModal() {
-            document.getElementById('genModal').style.display = 'flex';
-        }
-
-        function closeM(id) { document.getElementById(id).style.display = 'none'; }
-        function toggleMode(p) {
+        window.openGenModal = () => document.getElementById('genModal').style.display = 'flex';
+        window.closeM = (id) => document.getElementById(id).style.display = 'none';
+        
+        window.toggleMode = (p) => {
             const t = document.getElementById(p+'_type').value;
             document.getElementById(p+'_val_grp').style.display = t === 'lifetime' ? 'none' : 'block';
         }
 
-        function nav(id, el) {
+        window.nav = (id, el) => {
             document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
             document.getElementById('tab-'+id).classList.add('active');
-            
             document.querySelectorAll('.nav-btn, .side-btn').forEach(x=>x.classList.remove('active'));
-            
             const side = document.querySelector(`.side-btn[onclick*="'${id}'"]`);
             const bot = document.querySelector(`.nav-btn[onclick*="'${id}'"]`);
             if(side) side.classList.add('active');
             if(bot) bot.classList.add('active');
         }
 
-        function toggleSort() {
+        window.toggleSort = () => {
             const m = document.getElementById('sortMenu');
             m.style.display = m.style.display === 'block' ? 'none' : 'block';
         }
         
-        function setSort(v, t) {
+        window.setSort = (v, t) => {
             SORT = v;
             document.getElementById('sortLbl').textContent = t;
             toggleSort();
             renderKeys();
         }
 
-        function initApp() {
-            loadData();
-        }
+        // Auto Load on Start
+        window.onload = loadData;
     </script>
 </body>
-  </html>
+</html>
