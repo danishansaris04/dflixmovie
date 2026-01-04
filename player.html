@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DFlix Premium Admin</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        /* Animated Background */
+        .bg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #200122 0%, #000000 100%);
+            z-index: -1;
+        }
+
+        .stars {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: url('https://www.transparenttextures.com/patterns/stardust.png');
+            animation: move-stars 50s linear infinite;
+        }
+
+        @keyframes move-stars {
+            from { background-position: 0 0; }
+            to { background-position: 1000px 1000px; }
+        }
+
+        /* Admin Card */
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            padding: 40px;
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            width: 320px;
+            z-index: 1;
+        }
+
+        h2 { color: #fff; font-size: 1.2rem; margin-bottom: 30px; letter-spacing: 2px; opacity: 0.8; }
+
+        /* Status Display */
+        #statusLabel {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            display: block;
+            font-family: monospace;
+            color: #aaa;
+        }
+        
+        #statusValue {
+            font-size: 2.2rem;
+            font-weight: bold;
+            margin-bottom: 30px;
+            transition: 0.3s;
+        }
+
+        .on-text { color: #00ffcc; text-shadow: 0 0 15px rgba(0, 255, 204, 0.5); }
+        .off-text { color: #ff3366; text-shadow: 0 0 15px rgba(255, 51, 102, 0.5); }
+
+        /* Toggle Button */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 80px;
+            height: 40px;
+        }
+
+        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #333;
+            transition: .4s;
+            border-radius: 40px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 32px; width: 32px;
+            left: 4px; bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        input:checked + .slider { background-color: #e50914; }
+        input:checked + .slider:before { transform: translateX(40px); }
+
+        .footer { margin-top: 30px; font-size: 0.7rem; color: #555; }
+    </style>
+</head>
+<body>
+
+    <div class="bg"></div>
+    <div class="stars"></div>
+
+    <div class="card">
+        <h2>DFLIX ADMIN</h2>
+        
+        <span id="statusLabel">"status":</span>
+        <div id="statusValue" class="off-text">"off"</div>
+
+        <label class="switch">
+            <input type="checkbox" id="check" onchange="sync()">
+            <span class="slider"></span>
+        </label>
+
+        <div class="footer" id="msg">Secure Connection Active</div>
+    </div>
+
+<script>
+    const DB_URL = "https://dflixadmin-default-rtdb.firebaseio.com/.json";
+
+    // 1. Fetch Current State
+    async function load() {
+        try {
+            const res = await fetch(DB_URL);
+            const data = await res.json();
+            if (data && data.status) {
+                const isOn = data.status === "on";
+                document.getElementById('check').checked = isOn;
+                updateUI(data.status);
+            }
+        } catch (e) { document.getElementById('msg').innerText = "Sync Error!"; }
+    }
+
+    // 2. Update Firebase (Exact Format: "status": "on")
+    async function sync() {
+        const isChecked = document.getElementById('check').checked;
+        const val = isChecked ? "on" : "off";
+        const msg = document.getElementById('msg');
+        
+        msg.innerText = "Syncing...";
+        
+        try {
+            await fetch(DB_URL, {
+                method: 'PATCH',
+                body: JSON.stringify({ "status": val }),
+                headers: { 'Content-Type': 'application/json' }
+            });
+            updateUI(val);
+            msg.innerText = "Cloud Updated";
+        } catch (e) {
+            msg.innerText = "Update Failed!";
+        }
+    }
+
+    function updateUI(s) {
+        const v = document.getElementById('statusValue');
+        v.innerText = `"${s}"`;
+        v.className = s === "on" ? "on-text" : "off-text";
+    }
+
+    load();
+</script>
+</body>
+</html>
